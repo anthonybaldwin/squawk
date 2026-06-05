@@ -9,6 +9,7 @@ The bot supports multiple status page providers. Each provider lives in its own 
 | Statuspage.io (Atlassian) | `statuspage` | `https://status.atlassian.com` | Public v2 API, no key required |
 | incident.io | `incidentio` | `https://status.openai.com` | Public widget proxy, no key required |
 | Instatus | `instatus` | `https://status.perplexity.com` | Public v3 JSON API + Atom history feed, no key required |
+| RSS/Atom feed (fallback) | `feed` | `https://slack-status.com/feed/atom` | Any Atom or RSS feed; user supplies a direct feed URL |
 
 No API key is required for any supported provider — all endpoints are public.
 
@@ -112,7 +113,29 @@ Instatus exposes a documented keyless JSON API plus a standard Atom history feed
 
 ### Probe order
 
-Instatus is probed last (`PROBE_ORDER` is `[incidentio, statuspage, instatus]`). Its `/v3/summary.json` path does not collide with incident.io's `/proxy/<host>` or Statuspage's `/api/v2/summary.json`, and the probe additionally rejects Statuspage-shaped summaries (which carry `page.id` and a top-level `status` object).
+Instatus is probed before the generic feed fallback (`PROBE_ORDER` is `[incidentio, statuspage, instatus, feed]`). Its `/v3/summary.json` path does not collide with incident.io's `/proxy/<host>` or Statuspage's `/api/v2/summary.json`, and the probe additionally rejects Statuspage-shaped summaries (which carry `page.id` and a top-level `status` object).
+
+## RSS/Atom Feed Adapter (fallback)
+
+The `feed` provider is the last-resort adapter for status pages on none of the vendors above (e.g. Slack's bespoke `slack-status.com`). It is **not** auto-discovered from a page's HTML — the user passes a direct Atom or RSS feed URL to `/monitor add`, and that URL becomes the monitor's `baseUrl`. The provider fetches that single URL on every poll.
+
+| Endpoint | Used By | Purpose |
+|----------|---------|---------|
+| `<baseUrl>` (the feed URL itself) | `probe()`, `fetchSummary()`, `fetchIncidents()` | The Atom/RSS document — page metadata + incident entries with their update history |
+
+### Normalization details
+
+- **Format detection** is by document content: a `<feed>` root → Atom, an `<rss>`/`<channel>` → RSS. `probe()` returns `null` for anything that isn't a feed (so a plain HTML page falls through to the add-command error).
+- **Page name/url** come from the feed itself: Atom `<title>` + `<link rel="alternate" type="text/html">`, or RSS `<channel><title>`/`<link>`. `page.id` is the host of that URL.
+- **One entry = one incident**, keyed by the Atom `<id>` / RSS `<guid>` (falls back to the entry link). Updates accumulate inside the entry over time, so this maps onto the existing dedup-by-id polling model.
+- **Update bodies** are parsed from the entry `<content>` (Atom) / `<description>` (RSS). Each `<small>timestamp</small> … body` block becomes an `IncidentUpdate` with id `<entryId>:<tokenKey>` (a normalized form of the timestamp text, stable regardless of newest-first vs oldest-first ordering). Feeds with no update blocks (e.g. Slack RSS, which carries only a summary) yield a single update.
+- **Status** comes from a `<strong>Status</strong>` marker when present (Statuspage-family feeds) via the shared incident-status mapper; otherwise it is sniffed from the prose (`resolved`/`monitoring`/`identified`, default `investigating`). **Resolved is terminal:** any resolved update marks the incident resolved, independent of feed ordering.
+- **Update timestamps** handle two `<small>` forms — Statuspage's `Mon D, HH:MM TZ` (date known) and Slack's time-only `H:MMpm TZ` (anchored to the entry's published date, with forward day-rollover across an overnight run). Timezone abbreviations are treated as UTC, so times are approximate. Unparseable tokens fall back to the entry time.
+- **Impact** is always `minor` — feeds carry no impact severity. Page status is synthesized: operational when no incident is active, otherwise a generic non-operational indicator.
+
+### Probe order
+
+`feed` is probed last (`PROBE_ORDER` is `[incidentio, statuspage, instatus, feed]`). It only matches when the supplied URL is itself a parseable Atom/RSS document, so the vendor providers always win first for a normal status-page URL.
 
 ## Favicon Fetching
 
