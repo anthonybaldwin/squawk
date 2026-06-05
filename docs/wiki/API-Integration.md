@@ -8,6 +8,7 @@ The bot supports multiple status page providers. Each provider lives in its own 
 |----------|----|-----------| ---------|
 | Statuspage.io (Atlassian) | `statuspage` | `https://status.atlassian.com` | Public v2 API, no key required |
 | incident.io | `incidentio` | `https://status.openai.com` | Public widget proxy, no key required |
+| Instatus | `instatus` | `https://status.perplexity.com` | Public v3 JSON API + Atom history feed, no key required |
 
 No API key is required for any supported provider — all endpoints are public.
 
@@ -19,6 +20,7 @@ Current probe order:
 
 1. **incident.io** — probed first because many incident.io pages also expose a Statuspage-compatible `/api/v2/` shim, but the shim returns empty update bodies and a truncated history. Probing incident.io first ensures we use the richer native widget API when available.
 2. **Statuspage.io** — fallback for pages that are not on incident.io.
+3. **Instatus** — probed last. Its `/v3/summary.json` path does not collide with the earlier providers, and its probe rejects Statuspage-shaped summaries (see below).
 
 Monitors loaded from `data/monitors.json` or `MONITORS_JSON` that pre-date multi-provider support default to `statuspage` for backwards compatibility.
 
@@ -87,9 +89,30 @@ https://status.openai.com/proxy/status.openai.com/incidents  # full history
 - **Update message bodies** use a nested rich-doc structure (`{ type: "doc", content: [{ type: "paragraph", content: [...] }] }`). The adapter's `flattenMessage()` walks this recursively and returns plain text with paragraph breaks.
 - **Shortlinks** come from `incident.url` when present, otherwise constructed as `<public_url>/incident/<id>`.
 
-### Instatus status (skipped)
+## Instatus Adapter
 
-Instatus (e.g. `https://status.kagi.com`) is **not** currently supported. Its only public endpoint is `/summary.json`, which returns flat active-incident metadata without message bodies or history. Adding it would require either synthesizing updates from polled state diffs (degraded fidelity) or scraping the HTML incident pages (fragile). The provider interface is designed to make dropping Instatus in later a one-file addition if a richer public API appears.
+File: `src/providers/instatus.ts`
+
+Instatus exposes a documented keyless JSON API plus a standard Atom history feed. The adapter joins them on the incident `id`: the JSON API gives live state and the impact enum, while the Atom feed gives the full update history including the operator's written prose.
+
+| Endpoint | Used By | Purpose |
+|----------|---------|---------|
+| `<baseUrl>/v3/summary.json` | `probe()`, `fetchSummary()` | Page status + `activeIncidents[]` + `activeMaintenances[]` (current state, impact enum) |
+| `<baseUrl>/history.atom` | `fetchIncidents()` | Atom feed of recent incidents and maintenances with full update prose (for polling, `/replay`) |
+
+### Normalization details
+
+- **Page status** comes from `page.status`: `UP` → operational, `UNDERMAINTENANCE` → maintenance, anything else (`HASISSUES`, other `HAS*`) → derived from the worst active impact.
+- **Incident status** maps `INVESTIGATING`/`IDENTIFIED`/`MONITORING`/`RESOLVED` (and the title-case feed equivalents) onto the canonical set. Unknown words default to `investigating`.
+- **Maintenance status** maps `NOTSTARTEDYET`/`Scheduled` → `scheduled`, `INPROGRESS`/`VERIFYING`/`Identified` → `in_progress`, `COMPLETED`/`Resolved` → `resolved`. Maintenances carry `impact: "maintenance"` (rendered grey).
+- **Impact** maps `OPERATIONAL` → `none`, `MINOROUTAGE`/`DEGRADEDPERFORMANCE` → `minor`, `PARTIALOUTAGE` → `major`, `MAJOROUTAGE` → `critical`. The Atom feed carries no impact enum, so resolved/historical incidents default to `minor`; incidents still active in `summary.json` are stamped with their real impact by joining on `id`.
+- **Update bodies** come from the Atom `<content>` HTML. Each `<p>` update block (`<small>timestamp</small><br><strong>Status</strong> - body`) is parsed into an `IncidentUpdate`; header `<p>` blocks (`<strong>Type:</strong> …`) are skipped. Update ids are `<incidentId>:<updateTimestampIso>` for dedup. Update blocks are sorted chronologically (the feed does not emit them in order).
+- **Update timestamps** in the feed carry no year. The year is taken from the entry `<published>`, with a rollover guard: if the resulting date lands before `<published>` (beyond a ~24h grace window), it is rolled to the following year (incident spanning Dec→Jan).
+- **`page.id`** is synthesized from the base URL host (Instatus summaries omit it).
+
+### Probe order
+
+Instatus is probed last (`PROBE_ORDER` is `[incidentio, statuspage, instatus]`). Its `/v3/summary.json` path does not collide with incident.io's `/proxy/<host>` or Statuspage's `/api/v2/summary.json`, and the probe additionally rejects Statuspage-shaped summaries (which carry `page.id` and a top-level `status` object).
 
 ## Favicon Fetching
 

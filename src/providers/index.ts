@@ -1,10 +1,12 @@
 import { incidentio } from "./incidentio";
+import { instatus } from "./instatus";
 import { statuspage } from "./statuspage";
 import type { Provider, ProviderId, ProviderMonitor, Summary } from "./types";
 
 const PROVIDERS: Record<ProviderId, Provider> = {
   statuspage,
   incidentio,
+  instatus,
 };
 
 /**
@@ -17,7 +19,7 @@ const PROVIDERS: Record<ProviderId, Provider> = {
  * available. Statuspage URLs that aren't on incident.io will fail the
  * `/proxy/<host>` probe cleanly (404) and fall through to statuspage.
  */
-const PROBE_ORDER: Provider[] = [incidentio, statuspage];
+const PROBE_ORDER: Provider[] = [incidentio, statuspage, instatus];
 
 export function getProvider(monitor: ProviderMonitor): Provider {
   const id = monitor.provider ?? "statuspage";

@@ -25,10 +25,10 @@ Each monitor object requires:
 |-------|----------|-------------|
 | `id` | Yes | Unique identifier used in commands and state |
 | `channelId` | Yes | Discord text channel ID for posting updates |
-| `baseUrl` | Yes | Public status page URL (Statuspage.io e.g. `https://status.atlassian.com` or incident.io e.g. `https://status.openai.com`) |
+| `baseUrl` | Yes | Public status page URL (Statuspage.io e.g. `https://status.atlassian.com`, incident.io e.g. `https://status.openai.com`, or Instatus e.g. `https://status.perplexity.com`) |
 | `label` | No | Display name shown in embeds and command output |
 | `iconUrl` | No | Custom icon URL for embeds. Overrides auto-detected favicon. Useful when a page's favicon doesn't work in Discord (e.g. extensionless URLs). |
-| `provider` | No | Provider ID: `statuspage` (default) or `incidentio`. If omitted, `statuspage` is assumed — set to `incidentio` explicitly for incident.io pages. Runtime monitors added via `/monitor add` have this set automatically based on probe results. |
+| `provider` | No | Provider ID: `statuspage` (default), `incidentio`, or `instatus`. If omitted, `statuspage` is assumed — set to `incidentio` explicitly for incident.io pages or `instatus` for Instatus pages. Runtime monitors added via `/monitor add` have this set automatically based on probe results. |
 
 ### Option B: Legacy Single-Monitor
 

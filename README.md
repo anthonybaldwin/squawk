@@ -2,11 +2,11 @@
 
 A Bun-based Discord bot that:
 
-- polls one or more public status pages (Statuspage.io and incident.io are supported) and groups each incident into its own Discord thread
+- polls one or more public status pages (Statuspage.io, incident.io, and Instatus are supported) and groups each incident into its own Discord thread
 - answers slash-command status questions with the current page health
 - supports replay and preview flows so you can test notifications without waiting for a live incident
 
-Supported providers are auto-detected at `/monitor add` time — drop in any public Statuspage.io URL (e.g. `https://status.atlassian.com`) or any public incident.io URL (e.g. `https://status.openai.com`) and the bot picks the right adapter.
+Supported providers are auto-detected at `/monitor add` time — drop in any public Statuspage.io URL (e.g. `https://status.atlassian.com`), incident.io URL (e.g. `https://status.openai.com`), or Instatus URL (e.g. `https://status.perplexity.com`) and the bot picks the right adapter.
 
 <p align="center">
   <img width="483" height="424" alt="Squawk" src="https://github.com/user-attachments/assets/8359f28f-53e3-4c42-aa7e-002e0c3c4593" />
@@ -46,7 +46,7 @@ Full docs live in the [wiki](https://github.com/anthonybaldwin/squawk/wiki):
 
 ## Notes
 
-- The bot uses public APIs only — Statuspage.io's v2 API (`<base-url>/api/v2/...`) or incident.io's widget proxy (`<base-url>/proxy/<host>`) — so a public page URL is all you need.
+- The bot uses public APIs only — Statuspage.io's v2 API (`<base-url>/api/v2/...`), incident.io's widget proxy (`<base-url>/proxy/<host>`), or Instatus's v3 JSON API + Atom history feed (`<base-url>/v3/summary.json`, `<base-url>/history.atom`) — so a public page URL is all you need.
 - For development, setting `DISCORD_GUILD_ID` makes slash-command registration update faster than global commands.
 - On first startup, the bot seeds current incident-update IDs without posting them unless `POST_EXISTING_UPDATES_ON_START=true`.
 - The bot needs Send Messages, Embed Links, Create Public Threads, and Manage Messages permissions.
