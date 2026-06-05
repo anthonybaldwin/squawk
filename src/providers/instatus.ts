@@ -1,3 +1,4 @@
+import { decodeEntities, plainText } from "./feed-text";
 import type {
   Incident,
   IncidentUpdate,
@@ -98,23 +99,6 @@ export function parseUpdateTimestamp(small: string, publishedIso: string): strin
   }
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
-}
-
-/** Decode the handful of XML/HTML entities that appear in Instatus feeds. */
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;|&#x27;|&apos;/g, "'")
-    .replace(/&amp;/g, "&");
-}
-
-/** Strip all tags and collapse whitespace; trim a single duplicate trailing period. */
-function plainText(html: string): string {
-  const text = decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
-  // Instatus appends a period to update bodies that already end in one, yielding "..".
-  return text.replace(/\.\.$/, ".");
 }
 
 function firstMatch(source: string, re: RegExp): string | undefined {
