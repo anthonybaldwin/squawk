@@ -63,7 +63,7 @@ Delete recent bot-authored messages in the current channel.
 
 ## `/monitor add <url> [channel] [label] [id] [icon_url]`
 
-Add a new status page monitor at runtime. Both Statuspage.io and incident.io URLs are supported — the provider is auto-detected from the URL.
+Add a new status page monitor at runtime. Statuspage.io, incident.io, and Instatus URLs are supported — the provider is auto-detected from the URL.
 
 - **Permission:** Manage Server
 - **Options:**
@@ -73,7 +73,7 @@ Add a new status page monitor at runtime. Both Statuspage.io and incident.io URL
   - `id` (optional): Unique monitor ID; auto-derived from the page name if omitted
   - `icon_url` (optional): Custom icon URL for embeds; overrides auto-detected favicon
 - **Validation:**
-  - Probes each supported provider (incident.io first, then Statuspage.io) and picks the first match. The detected provider is saved on the monitor entry so future polls skip detection.
+  - Probes each supported provider (incident.io first, then Statuspage.io, then Instatus) and picks the first match. The detected provider is saved on the monitor entry so future polls skip detection.
   - Checks bot permissions in the target channel
   - Rejects duplicate IDs or duplicate URLs (same status page can only be tracked once per server; different status pages in the same channel are allowed)
 - **Side effects:**

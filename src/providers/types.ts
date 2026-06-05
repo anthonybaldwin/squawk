@@ -5,7 +5,7 @@
  * rendering, state, and commands stay provider-agnostic.
  */
 
-export type ProviderId = "statuspage" | "incidentio";
+export type ProviderId = "statuspage" | "incidentio" | "instatus";
 
 export type PageStatus = {
   indicator: string;

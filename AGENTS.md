@@ -4,7 +4,7 @@ Instructions for AI coding agents working on this project. **All agents MUST rea
 
 ## Project Overview
 
-Squawk is a Bun-based Discord bot that polls public status pages (Statuspage.io and incident.io are supported) and posts incident updates as threaded conversations in Discord. It supports multiple monitors, runtime monitor management, and persistent state.
+Squawk is a Bun-based Discord bot that polls public status pages (Statuspage.io, incident.io, and Instatus are supported) and posts incident updates as threaded conversations in Discord. It supports multiple monitors, runtime monitor management, and persistent state.
 
 The repo was previously named `statuspage-discord`. The legacy `STATUSPAGE_MONITORS_JSON` env var is still honored as a deprecated alias for `MONITORS_JSON`.
 
@@ -24,6 +24,7 @@ src/providers/            # Per-provider API adapters (one file per provider)
   index.ts                # Provider registry + detectProvider()
   statuspage.ts           # Statuspage.io adapter
   incidentio.ts           # incident.io adapter (uses /proxy/<host> widget API)
+  instatus.ts             # Instatus adapter (v3 JSON API + Atom history feed)
 data/state.json           # Runtime state (git-ignored, auto-created)
 data/monitors.json        # Runtime monitors (git-ignored, auto-created)
 AGENTS.md                 # Agent instructions (cross-tool)
@@ -37,7 +38,7 @@ docs/wiki/                # GitHub-style wiki documentation
   Contributing.md         # How to contribute and code conventions
   Incident-Lifecycle.md   # How incidents are tracked and displayed
   State-Management.md     # Persistence format and behavior
-  API-Integration.md      # Statuspage API usage
+  API-Integration.md      # Status page provider APIs (Statuspage, incident.io, Instatus)
   Deployment.md           # Docker, CI/CD, production notes
   Development.md          # Local setup and contribution guide
 ```

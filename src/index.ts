@@ -51,7 +51,7 @@ const monitorSchema = z.object({
   baseUrl: z.string().url(),
   label: z.string().min(1).optional(),
   iconUrl: z.string().url().optional(),
-  provider: z.enum(["statuspage", "incidentio"]).optional(),
+  provider: z.enum(["statuspage", "incidentio", "instatus"]).optional(),
 });
 
 const envSchema = z.object({
@@ -561,6 +561,9 @@ function impactColor(impact: string, status?: string) {
       return 0xf2994a;
     case "critical":
       return 0xeb5757;
+    case "maintenance":
+    case "under_maintenance":
+      return 0x7f8c8d;
     default:
       return 0x5865f2;
   }
