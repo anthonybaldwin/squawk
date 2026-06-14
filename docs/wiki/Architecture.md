@@ -71,6 +71,9 @@ Each incident gets its own Discord thread hanging off a "parent" embed in the ch
 ### Server-Side Open Incident Tracking
 The bot maintains an `openIncidentIds` array in state to reliably detect when incidents vanish from the API. This prevents false ghosting of incidents the bot never saw as "open".
 
+### Single-Flight Polling
+The poll loop runs through a `singleFlight` guard so it never overlaps with itself. A cycle can outrun `POLL_INTERVAL_MS` when monitors are slow (failing APIs retry with backoff) or an incident triggers chatty Discord thread creation; without the guard, the overrunning cycle and the next `setInterval` tick would run concurrently, both observe a brand-new incident with no thread mapping, and each create a parent message + thread — producing duplicate threads (only one survives the last-writer-wins `writeState`). While a run is in flight, later ticks coalesce into it; the next fresh run starts after it settles.
+
 ### Self-Healing State
 When Discord messages or threads are manually deleted, the bot detects missing resources (via DiscordAPIError codes 10003, 10008, 50001) and cleans up its state rather than crashing.
 
