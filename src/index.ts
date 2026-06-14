@@ -2003,6 +2003,30 @@ function startPresenceRotation(client: Client<true>) {
   setInterval(updatePresence, 15_000);
 }
 
+/**
+ * Serialize an async task so it never runs concurrently with itself. While a
+ * run is in flight, additional calls return that same in-flight promise
+ * instead of starting a new run; once it settles, the next call starts fresh.
+ *
+ * The poll loop uses this because `postLatestUpdates` can outrun
+ * `POLL_INTERVAL_MS` (slow/failing monitors retry with backoff, Discord thread
+ * creation is chatty). Without a guard, an overrunning cycle and the next
+ * `setInterval` tick run concurrently, both see a brand-new incident with no
+ * thread mapping, and each creates a parent message + thread — producing
+ * duplicate threads (only one of which survives the last-writer-wins
+ * `writeState`).
+ */
+export function singleFlight(task: () => Promise<void>): () => Promise<void> {
+  let inFlight: Promise<void> | null = null;
+  return () => {
+    if (inFlight) return inFlight;
+    inFlight = task().finally(() => {
+      inFlight = null;
+    });
+    return inFlight;
+  };
+}
+
 async function main() {
   await ensureStateFile();
   const runtimeEntries = await readRuntimeMonitors();
@@ -2018,14 +2042,19 @@ async function main() {
     console.log(`Logged in as ${client.user?.tag}`);
     startPresenceRotation(client as Client<true>);
 
+    // Guard against re-entrancy: if a poll cycle outruns POLL_INTERVAL_MS, the
+    // next tick coalesces into the in-flight run rather than racing it and
+    // creating duplicate incident threads.
+    const poll = singleFlight(() => postLatestUpdates(client));
+
     try {
-      await postLatestUpdates(client);
+      await poll();
     } catch (error) {
       console.error("Initial poll failed.", error);
     }
 
     setInterval(() => {
-      void postLatestUpdates(client).catch((error) => {
+      void poll().catch((error) => {
         console.error("Polling failed.", error);
       });
     }, env.POLL_INTERVAL_MS);
@@ -2095,4 +2124,9 @@ async function main() {
   await client.login(env.DISCORD_TOKEN);
 }
 
-await main();
+// Only boot the bot when run directly (`bun src/index.ts`). Guarding on
+// `import.meta.main` keeps the module importable from tests without logging
+// into Discord or starting the poll loop.
+if (import.meta.main) {
+  await main();
+}
