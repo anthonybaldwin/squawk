@@ -51,7 +51,7 @@ const monitorSchema = z.object({
   baseUrl: z.string().url(),
   label: z.string().min(1).optional(),
   iconUrl: z.string().url().optional(),
-  provider: z.enum(["statuspage", "incidentio", "instatus"]).optional(),
+  provider: z.enum(["statuspage", "incidentio", "instatus", "feed"]).optional(),
 });
 
 const envSchema = z.object({
@@ -1793,7 +1793,7 @@ async function handleMonitorAdd(interaction: ChatInputCommandInteraction, client
   if (!detected) {
     const supported = SUPPORTED_PROVIDERS.map((p) => p.displayName).join(", ");
     throw new Error(
-      `Could not reach a supported status page at \`${baseUrl}\`. Supported providers: ${supported}. Example URLs: \`https://status.atlassian.com\` (Statuspage), \`https://status.openai.com\` (incident.io).`,
+      `Could not monitor \`${baseUrl}\`. Auto-detection supports ${supported}. For other status pages, pass a direct **Atom or RSS** feed URL — e.g. \`https://slack-status.com/feed/atom\`.`,
     );
   }
   const { provider, summary } = detected;

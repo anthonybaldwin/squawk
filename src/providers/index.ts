@@ -1,3 +1,4 @@
+import { feed } from "./feed";
 import { incidentio } from "./incidentio";
 import { instatus } from "./instatus";
 import { statuspage } from "./statuspage";
@@ -7,6 +8,7 @@ const PROVIDERS: Record<ProviderId, Provider> = {
   statuspage,
   incidentio,
   instatus,
+  feed,
 };
 
 /**
@@ -18,8 +20,12 @@ const PROVIDERS: Record<ProviderId, Provider> = {
  * incident.io first ensures we use the richer native widget API when
  * available. Statuspage URLs that aren't on incident.io will fail the
  * `/proxy/<host>` probe cleanly (404) and fall through to statuspage.
+ *
+ * `feed` is probed last and only matches when the supplied URL is itself a
+ * parseable Atom/RSS document, so real provider pages always win first and a
+ * plain HTML page matches nothing (falling through to the add-command error).
  */
-const PROBE_ORDER: Provider[] = [incidentio, statuspage, instatus];
+const PROBE_ORDER: Provider[] = [incidentio, statuspage, instatus, feed];
 
 export function getProvider(monitor: ProviderMonitor): Provider {
   const id = monitor.provider ?? "statuspage";

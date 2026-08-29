@@ -2,11 +2,11 @@
 
 A Bun-based Discord bot that:
 
-- polls one or more public status pages (Statuspage.io, incident.io, and Instatus are supported) and groups each incident into its own Discord thread
+- polls one or more public status pages (Statuspage.io, incident.io, and Instatus are auto-detected, plus a generic RSS/Atom feed fallback for anything else) and groups each incident into its own Discord thread
 - answers slash-command status questions with the current page health
 - supports replay and preview flows so you can test notifications without waiting for a live incident
 
-Supported providers are auto-detected at `/monitor add` time — drop in any public Statuspage.io URL (e.g. `https://status.atlassian.com`), incident.io URL (e.g. `https://status.openai.com`), or Instatus URL (e.g. `https://status.perplexity.com`) and the bot picks the right adapter.
+Supported providers are auto-detected at `/monitor add` time — drop in any public Statuspage.io URL (e.g. `https://status.atlassian.com`), incident.io URL (e.g. `https://status.openai.com`), or Instatus URL (e.g. `https://status.perplexity.com`) and the bot picks the right adapter. For a status page on none of these (e.g. Slack's bespoke `slack-status.com`), pass a direct **Atom or RSS** feed URL — e.g. `https://slack-status.com/feed/atom` — and the generic feed provider handles it. Atom is preferred where available (it carries the full update history); impact severity isn't available from feeds.
 
 <p align="center">
   <img width="483" height="424" alt="Squawk" src="https://github.com/user-attachments/assets/8359f28f-53e3-4c42-aa7e-002e0c3c4593" />
@@ -46,7 +46,7 @@ Full docs live in the [wiki](https://github.com/anthonybaldwin/squawk/wiki):
 
 ## Notes
 
-- The bot uses public APIs only — Statuspage.io's v2 API (`<base-url>/api/v2/...`), incident.io's widget proxy (`<base-url>/proxy/<host>`), or Instatus's v3 JSON API + Atom history feed (`<base-url>/v3/summary.json`, `<base-url>/history.atom`) — so a public page URL is all you need.
+- The bot uses public APIs only — Statuspage.io's v2 API (`<base-url>/api/v2/...`), incident.io's widget proxy (`<base-url>/proxy/<host>`), or Instatus's v3 JSON API + Atom history feed (`<base-url>/v3/summary.json`, `<base-url>/history.atom`) — so a public page URL is all you need. For unsupported pages, the generic feed provider reads a direct Atom or RSS feed URL you supply.
 - For development, setting `DISCORD_GUILD_ID` makes slash-command registration update faster than global commands.
 - On first startup, the bot seeds current incident-update IDs without posting them unless `POST_EXISTING_UPDATES_ON_START=true`.
 - The bot needs Send Messages, Embed Links, Create Public Threads, and Manage Messages permissions.
