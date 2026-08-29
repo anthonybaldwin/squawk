@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.14-alpine
+FROM oven/bun:1.4.0-alpine
 
 ARG APP_VERSION=
 ENV APP_VERSION=${APP_VERSION}
