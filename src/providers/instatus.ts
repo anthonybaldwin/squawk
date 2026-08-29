@@ -73,11 +73,16 @@ const MONTHS: Record<string, number> = {
 
 /**
  * Parse an Instatus feed `<small>` timestamp like "Jun  5, 01:40:38 GMT+0"
- * (no year) into an ISO-8601 UTC string. The year is taken from `publishedIso`;
- * if the resulting date lands before `publishedIso` (beyond a small grace
- * window), it belongs to the following year (incident spanning a year boundary).
+ * (no year) into an ISO-8601 UTC string. The year is taken from `anchorIso`;
+ * if the resulting date lands before `anchorIso` (beyond a small grace
+ * window), it belongs to the following year (entry spanning a year boundary).
+ *
+ * `anchorIso` MUST be a lower bound on the entry's updates — see
+ * `entryAnchor()`. Anchoring on `<published>` alone is wrong for scheduled
+ * maintenance, where `<published>` is the scheduled start and the announcement
+ * update legitimately precedes it.
  */
-export function parseUpdateTimestamp(small: string, publishedIso: string): string | null {
+export function parseUpdateTimestamp(small: string, anchorIso: string): string | null {
   const m = small.match(/([A-Za-z]{3})\s+(\d{1,2})\s*,\s+(\d{1,2}):(\d{2}):(\d{2})/);
   if (!m) return null;
   const month = MONTHS[m[1].toLowerCase()];
@@ -87,13 +92,13 @@ export function parseUpdateTimestamp(small: string, publishedIso: string): strin
   const min = Number(m[4]);
   const sec = Number(m[5]);
 
-  const published = new Date(publishedIso);
-  const year = Number.isNaN(published.getTime()) ? new Date(0).getUTCFullYear() : published.getUTCFullYear();
+  const anchor = new Date(anchorIso);
+  const year = Number.isNaN(anchor.getTime()) ? new Date(0).getUTCFullYear() : anchor.getUTCFullYear();
 
   let date = new Date(Date.UTC(year, month, day, hour, min, sec));
-  // The feed omits the year, so an update that lands before `published` (with a
+  // The feed omits the year, so an update that lands before `anchor` (with a
   // ~24h grace window for rounding) must belong to the following year (Dec→Jan).
-  if (!Number.isNaN(published.getTime()) && date.getTime() < published.getTime() - 24 * 3600 * 1000) {
+  if (!Number.isNaN(anchor.getTime()) && date.getTime() < anchor.getTime() - 24 * 3600 * 1000) {
     date = new Date(Date.UTC(year + 1, month, day, hour, min, sec));
   }
   if (Number.isNaN(date.getTime())) return null;
@@ -122,6 +127,24 @@ function firstMatch(source: string, re: RegExp): string | undefined {
   return m ? m[1] : undefined;
 }
 
+/**
+ * Lower bound for an entry's update timestamps, used to resolve the year the
+ * feed omits. `<published>` is NOT that bound on its own: for a scheduled
+ * maintenance it is the scheduled start, while the announcement update can be
+ * days or weeks earlier (`<updated>` carries that announcement time). Taking
+ * the earlier of the two keeps early announcements in their real year — dating
+ * one a year ahead makes it sort last, so the entry's derived status comes from
+ * the announcement instead of the final "Completed" and the incident never
+ * looks resolved.
+ */
+function entryAnchor(published: string, updated: string | undefined): string {
+  const publishedMs = new Date(published).getTime();
+  const updatedMs = updated === undefined ? NaN : new Date(updated).getTime();
+  if (Number.isNaN(updatedMs)) return published;
+  if (Number.isNaN(publishedMs)) return updated as string;
+  return updatedMs < publishedMs ? (updated as string) : published;
+}
+
 type ParsedUpdate = { status: string; body: string; created_at: string };
 
 /**
@@ -130,7 +153,7 @@ type ParsedUpdate = { status: string; body: string; created_at: string };
  * `<strong>STATUS</strong> -` marker. Header blocks (`<strong>Type:</strong> …`)
  * are skipped because their `<strong>` text ends in a colon.
  */
-function parseUpdateBlocks(content: string, publishedIso: string, isMaintenance: boolean): ParsedUpdate[] {
+function parseUpdateBlocks(content: string, anchorIso: string, isMaintenance: boolean): ParsedUpdate[] {
   const updates: ParsedUpdate[] = [];
   const blockRe = /<p>\s*<small>([\s\S]*?)<\/small>\s*<br\s*\/?>\s*<strong>([^<]+)<\/strong>\s*-\s*([\s\S]*?)<\/p>/g;
   let m: RegExpExecArray | null;
@@ -138,7 +161,7 @@ function parseUpdateBlocks(content: string, publishedIso: string, isMaintenance:
     const small = plainText(m[1]);
     const statusWord = m[2].trim();
     if (statusWord.endsWith(":")) continue; // header block, not an update
-    const created = parseUpdateTimestamp(small, publishedIso) ?? publishedIso;
+    const created = parseUpdateTimestamp(small, anchorIso) ?? anchorIso;
     const status = isMaintenance
       ? canonicalMaintenanceStatus(statusWord)
       : canonicalIncidentStatus(statusWord);
@@ -159,6 +182,8 @@ export function parseInstatusAtom(xml: string): Incident[] {
     const name = decodeEntities(firstMatch(entry, /<title>([\s\S]*?)<\/title>/)?.trim() ?? "Untitled incident");
     const published = firstMatch(entry, /<published>([\s\S]*?)<\/published>/)?.trim()
       ?? new Date(0).toISOString();
+    const updated = firstMatch(entry, /<updated>([\s\S]*?)<\/updated>/)?.trim();
+    const anchor = entryAnchor(published, updated);
     const shortlink = firstMatch(entry, /<link[^>]*rel=["']alternate["'][^>]*href=["']([^"']+)["']/);
 
     const contentRaw = firstMatch(entry, /<content[^>]*>([\s\S]*?)<\/content>/) ?? "";
@@ -166,7 +191,7 @@ export function parseInstatusAtom(xml: string): Incident[] {
     const typeField = firstMatch(content, /<strong>\s*Type:\s*<\/strong>\s*([A-Za-z]+)/);
     const isMaintenance = (typeField ?? "").toLowerCase() === "maintenance";
 
-    const updates = parseUpdateBlocks(content, published, isMaintenance);
+    const updates = parseUpdateBlocks(content, anchor, isMaintenance);
     const mappedUpdates: IncidentUpdate[] = updates.map((u) => ({
       id: `${id}:${u.created_at}`,
       status: u.status,

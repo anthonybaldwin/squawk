@@ -154,6 +154,50 @@ describe("parseInstatusAtom", () => {
   });
 });
 
+// A scheduled maintenance announced well before it runs: <published> is the
+// scheduled START (Jul 19) while <updated> is the announcement (Jul 8), so the
+// first update legitimately predates <published>. Anchoring the year-rollover
+// heuristic on <published> alone pushed that update into the NEXT year, which
+// made it sort last and left the entry looking permanently in_progress.
+const ATOM_MAINTENANCE_ANNOUNCED_EARLY = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xml:lang="en-US" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>tag:status.kagi.com,2005:Maintenance/cmrbr5ynx05vc0kp9eoawdsbu</id>
+    <published>2026-07-19T06:00:00.000+00:00</published>
+    <updated>2026-07-08T07:24:48.978+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://status.kagi.com/maintenance/cmrbr5ynx05vc0kp9eoawdsbu"/>
+    <title>Database maintenance for Kagi Search</title>
+    <content type="html"><![CDATA[
+      <p><strong>Type:</strong> Maintenance</p>
+      <p><strong>Duration:</strong> 8 minutes</p>
+      <p><small>Jul <var data-var='date'> 8</var>, <var data-var='time'>07:24:48</var> GMT+0</small><br /><strong>Identified</strong> -
+    We plan to perform a minor upgrade at this time..</p>
+      <p><small>Jul <var data-var='date'> 19</var>, <var data-var='time'>06:00:01</var> GMT+0</small><br /><strong>Identified</strong> -
+    Maintenance is now in progress.</p>
+      <p><small>Jul <var data-var='date'> 19</var>, <var data-var='time'>06:07:55</var> GMT+0</small><br /><strong>Completed</strong> -
+    Maintenance has completed successfully..</p>
+    ]]></content>
+  </entry>
+</feed>`;
+
+describe("parseInstatusAtom — maintenance announced before its scheduled start", () => {
+  const [maint] = parseInstatusAtom(ATOM_MAINTENANCE_ANNOUNCED_EARLY);
+
+  test("keeps the announcement in the published year instead of rolling it forward", () => {
+    expect(maint.incident_updates.map((u) => u.created_at)).toEqual([
+      "2026-07-08T07:24:48.000Z",
+      "2026-07-19T06:00:01.000Z",
+      "2026-07-19T06:07:55.000Z",
+    ]);
+  });
+
+  test("resolves on the Completed update rather than staying in_progress forever", () => {
+    expect(maint.status).toBe("resolved");
+    expect(maint.resolved_at).toBe("2026-07-19T06:07:55.000Z");
+    expect(maint.created_at).toBe("2026-07-08T07:24:48.000Z");
+  });
+});
+
 import { mapInstatusSummary, instatusPageStatus, type InstatusSummaryJson } from "./instatus";
 
 const SUMMARY_ACTIVE: InstatusSummaryJson = {
