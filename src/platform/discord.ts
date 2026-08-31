@@ -300,6 +300,12 @@ export class DiscordPlatform implements ChatPlatform {
 
   async deleteMessages(channelId: string, messageIds: string[]): Promise<string[]> {
     if (messageIds.length === 0) return [];
+    // discord.js routes a single ID to a plain delete, but reports it back only
+    // if the message happens to be cached. Do that case ourselves so the caller
+    // always learns the delete succeeded.
+    if (messageIds.length === 1) {
+      return (await this.deleteMessage(channelId, messageIds[0])) ? messageIds : [];
+    }
     const channel = await this.getChannel(channelId);
     const deleted = await channel.bulkDelete(messageIds, true).catch(() => null);
     return deleted ? [...deleted.keys()] : [];
