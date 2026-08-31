@@ -8,6 +8,8 @@ The simplest production deployment. Secrets stay in your host-side `.env` and ar
 docker compose up -d
 ```
 
+The same image runs on either chat platform — set `PLATFORM` (or just the one platform's tokens) in `.env`. Slack uses Socket Mode, so no ingress, reverse proxy, or public URL is needed; see [Slack Setup](Slack-Setup.md).
+
 The `compose.yml` configures:
 - `env_file: .env` for secret injection (never baked into the image)
 - `squawk_data` named volume mounted at `/app/data` for persistent state
@@ -73,7 +75,7 @@ Weekly updates for:
 ## Dockerfile Details
 
 ```dockerfile
-FROM oven/bun:1.3.10-alpine
+FROM oven/bun:1.4.0-alpine
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
@@ -90,6 +92,8 @@ CMD ["bun", "src/index.ts"]
 
 - **Secrets:** Never bake `.env` or tokens into the Docker image. Use `env_file` or environment variables at runtime.
 - **State volume:** Always mount `data/` as a persistent volume. Without it, the bot will re-seed on every restart and may re-post updates.
+- **Switching platforms:** `data/state.json` holds one platform's message and thread IDs. Moving a deployment from Discord to Slack (or the reverse) needs a fresh data volume — the old handles mean nothing to the new platform.
+- **Running both platforms:** Deploy two instances with separate data volumes and separate `MONITORS_JSON` channel IDs. One process serves one platform by design.
 - **Polling interval:** The default 60s is a good balance. Lower intervals increase API load; higher intervals delay notifications.
-- **Multiple instances:** Do not run multiple instances against the same Discord channel. They will fight over thread ownership and duplicate posts.
+- **Multiple instances:** Do not run multiple instances against the same channel. They will fight over thread ownership and duplicate posts.
 - **Logging:** The bot logs to stdout. Use `docker logs` or your container orchestrator's logging to monitor health.

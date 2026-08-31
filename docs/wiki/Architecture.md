@@ -2,51 +2,63 @@
 
 ## Overview
 
-squawk is a Bun/TypeScript application with bot logic in `src/index.ts` (~1700 lines, single file by design) and provider-specific API adapters in `src/providers/` (one small file per provider). It connects to Discord via [discord.js](https://discord.js.org/) and polls supported public status page APIs on a timer.
+squawk is a Bun/TypeScript application that polls supported public status page APIs on a timer and posts incidents to a chat platform. It is split three ways: **status page providers** (`src/providers/`), a **platform-neutral core** (`src/core.ts` and friends), and **chat platform adapters** (`src/platform/`). One deployment drives one chat platform, chosen at startup from `PLATFORM`.
 
 ## Data Flow
 
 ```mermaid
 graph LR
   A["Status page API\n(Statuspage.io, incident.io, or Instatus)"] -->|poll every 60s| P["Provider adapter"]
-  P -->|normalized Incident[]| B["Bot"]
+  P -->|normalized Incident[]| B["core.ts"]
   B -->|compare update IDs| C["State"]
-  B -->|new updates?| D["Discord API"]
+  B -->|new updates?| D["ChatPlatform"]
   C --- E["data/state.json"]
   C --- F["data/monitors.json"]
-  D --- G["threads"]
-  D --- H["embeds"]
-  D --- I["pins"]
+  D --> DI["platform/discord.ts"]
+  D --> SL["platform/slack.ts"]
+  DI --- G["Discord API"]
+  SL --- H["Slack API\n(Socket Mode)"]
 ```
 
 1. Every `POLL_INTERVAL_MS` (default 60s), the bot calls `getProvider(monitor).fetchIncidents()` for each monitor. The provider adapter handles its API quirks and returns a normalized `Incident[]`.
 2. Compares returned update IDs against `monitorState.postedUpdateIds`
-3. For each unseen update: ensures a thread exists, posts the update embed, syncs the parent message
+3. For each unseen update: ensures a thread exists, posts the update embed, syncs the parent message — all through the `ChatPlatform` interface, so the same code path drives Discord or Slack
 4. Reconciles `openIncidentIds` against the API to detect vanished incidents
 5. Persists updated state to `data/state.json`
 
 ## Module Structure
 
-The single source file is organized into these logical sections:
+| File | Purpose |
+|------|---------|
+| `src/index.ts` | Entry point: resolves the platform, loads monitors, starts the poll loop |
+| `src/config.ts` | Zod env schema, monitor schema, platform resolution, runtime monitor persistence |
+| `src/state.ts` | `data/state.json` read/write with legacy migration |
+| `src/icons.ts` | Favicon discovery and caching for embed author icons |
+| `src/render.ts` | Platform-neutral `Embed` builders + the `TextFormat` markup interface |
+| `src/core.ts` | Incident lifecycle, polling, and every command handler |
+| `src/platform/types.ts` | The `ChatPlatform` seam: messages, threads, pins, commands, capabilities |
+| `src/platform/discord.ts` | discord.js adapter |
+| `src/platform/slack.ts` | Slack adapter (Socket Mode + Block Kit) |
+| `src/providers/` | Per-provider status page API adapters |
 
-| Section | Lines (approx.) | Purpose |
-|---------|-----------------|---------|
-| Imports & Validation | 1-100 | Zod schemas, env parsing, monitor loading |
-| State Types | 100-240 | State-only types (canonical Incident/Summary types live in `src/providers/types.ts`) |
-| Command Builders | 240-350 | Slash command definitions (dynamic via feature flags) |
-| State I/O | 350-410 | Read/write `state.json` with migration support |
-| API Client | 410-435 | Thin wrappers that dispatch to `getProvider(monitor)` from `src/providers/` |
-| UI Rendering | 435-700 | Embed builders for status, incidents, updates, ghosts |
-| Replay Logic | 700-880 | Incident timeline replay and deduplication |
-| Autocomplete | 880-910 | Monitor autocomplete for slash commands |
-| Command Registration | 910-920 | Discord REST API command push |
-| Thread Management | 970-1110 | Thread creation, parent sync, self-healing |
-| Missing Incident Handler | 1110-1190 | Ghost detection and strikethrough rendering |
-| Polling Core | 1190-1260 | Main poll loop with open incident tracking |
-| Command Handlers | 1260-1610 | /status, /replay, /testpost, /clean, /monitor |
-| Main Entry | 1610-1700 | Client setup, event handlers, login |
+Nothing outside `src/platform/` imports `discord.js` or `@slack/*`, and `src/core.ts` contains no platform-specific branching beyond capability checks.
+
+### The ChatPlatform Seam
+
+Adding a platform means implementing `ChatPlatform` and nothing else. Two conventions keep platform quirks out of the core:
+
+- **`null` means "gone".** Any lookup returning `null` tells the core the resource is missing in a way that warrants pruning state. Discord's `10003`/`10008`/`50001`/`50013`/`50035` and Slack's `channel_not_found`/`message_not_found` are translated inside their adapters; every other failure throws and is handled upstream.
+- **Capabilities gate optional work.** `threadArchive`, `pinNotices`, `deletableThreads`, `presence`, `autocomplete`, and `maxMessageDeleteAgeMs` describe what a platform can do. Slack turns off the first five, and the core simply skips that work rather than branching on platform identity.
+
+### Rendering
+
+`render.ts` produces a structural `Embed` (color, author, title, description, fields, footer) plus inline markup built through a `TextFormat` the adapter supplies. Discord's implementation emits Discord markdown and `<t:…>` timestamps; Slack's emits mrkdwn and `<!date^…>` timestamps. Status page text is passed through `fmt.escape()` so Slack's reserved `&`, `<`, `>` render literally, while markup Squawk generates itself is left alone.
+
+Adapters then map the `Embed` to their native form: a discord.js `EmbedBuilder`, or a Slack attachment whose `color` supplies the accent bar and whose Block Kit blocks carry the content (inline fields become two-column field sections, full-width fields get their own).
 
 ## Presence Rotation
+
+Discord only — Slack has no bot presence, so the rotation is skipped there via the `presence` capability.
 
 The bot displays a rotating Discord presence that cycles every 15 seconds through four statuses:
 
@@ -59,14 +71,17 @@ The rotation reads state from disk each tick to get current incident counts, and
 
 ## Key Design Decisions
 
-### Single File (with a provider sidecar)
-Bot logic lives in one file (`src/index.ts`) for simplicity — the project is small enough that splitting core logic into modules would add overhead without meaningful benefit. Provider-specific API code is the one exception: each provider lives in its own small file under `src/providers/` so adding a new provider is a drop-in change with no edits to `src/index.ts` beyond registering the provider.
+### One Platform Per Deployment
+State keys are opaque platform handles — Discord snowflakes or Slack `ts` values — so a single `data/state.json` belongs to one platform. Running both means running two instances with separate data volumes. This keeps the state format, the monitor schema, and the command surface identical across platforms instead of qualifying every ID by platform.
+
+### Adapters, Not Branches
+Both the status page side and the chat side sit behind small interfaces (`Provider`, `ChatPlatform`). The lifecycle in `core.ts` is written once against both. Adding a status page vendor or a chat platform is a new file plus a registration, not edits threaded through the lifecycle.
 
 ### Polling Over Webhooks
-The supported providers offer webhooks, but polling is simpler to deploy (no public endpoint needed) and works behind NATs/firewalls. The trade-off is a ~60s update delay.
+The supported providers offer webhooks, but polling is simpler to deploy (no public endpoint needed) and works behind NATs/firewalls. The trade-off is a ~60s update delay. Slack is driven over Socket Mode for the same reason — it needs no inbound HTTP.
 
 ### Thread-Per-Incident
-Each incident gets its own Discord thread hanging off a "parent" embed in the channel. This keeps the main channel clean while preserving full timelines.
+Each incident gets its own thread hanging off a "parent" embed in the channel — a real thread channel on Discord, replies on the parent message on Slack. This keeps the main channel clean while preserving full timelines.
 
 ### Server-Side Open Incident Tracking
 The bot maintains an `openIncidentIds` array in state to reliably detect when incidents vanish from the API. This prevents false ghosting of incidents the bot never saw as "open".
@@ -75,14 +90,18 @@ The bot maintains an `openIncidentIds` array in state to reliably detect when in
 The poll loop runs through a `singleFlight` guard so it never overlaps with itself. A cycle can outrun `POLL_INTERVAL_MS` when monitors are slow (failing APIs retry with backoff) or an incident triggers chatty Discord thread creation; without the guard, the overrunning cycle and the next `setInterval` tick would run concurrently, both observe a brand-new incident with no thread mapping, and each create a parent message + thread — producing duplicate threads (only one survives the last-writer-wins `writeState`). While a run is in flight, later ticks coalesce into it; the next fresh run starts after it settles.
 
 ### Self-Healing State
-When Discord messages or threads are manually deleted, the bot detects missing resources (via DiscordAPIError codes 10003, 10008, 50001) and cleans up its state rather than crashing.
+When messages or threads are manually deleted, the adapter reports them as `null` and the core cleans up its state rather than crashing.
 
 ## Dependencies
 
 | Package | Purpose |
 |---------|---------|
 | `discord.js` | Discord gateway + REST API |
+| `@slack/web-api` | Slack Web API client |
+| `@slack/socket-mode` | Slack Socket Mode connection (no public endpoint required) |
 | `zod` | Runtime validation for env vars and API payloads |
+
+Only the active platform's client is loaded — `src/index.ts` imports the adapter dynamically after resolving `PLATFORM`.
 
 Dev-only: `typescript`, `@types/bun`.
 
@@ -90,6 +109,6 @@ Dev-only: `typescript`, `@types/bun`.
 
 - **Zod validation** at startup catches misconfigured environment variables immediately
 - **API errors** are caught per-monitor so one failing page doesn't block others
-- **Discord API errors** with known codes (Unknown Channel, Unknown Message, Missing Access) trigger state cleanup instead of crashes
+- **Chat platform errors** meaning "this resource is gone" are translated to `null` by the adapter and trigger state cleanup instead of crashes
 - **Transient errors** (network timeouts) are logged and retried on the next poll cycle
 - **Interaction errors** are sent as ephemeral replies to the user

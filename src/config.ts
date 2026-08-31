@@ -100,7 +100,27 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-export const env: Env = envSchema.parse(process.env);
+/**
+ * Treat blank values as unset.
+ *
+ * A `.env` file (and `docker compose env_file`) exports every key it lists,
+ * including the ones left empty as placeholders — `DISCORD_GUILD_ID=` arrives
+ * as `""`, not `undefined`, which fails an optional non-empty string and takes
+ * the whole process down at startup.
+ */
+export function withoutBlankValues(
+  source: Record<string, string | undefined>,
+): Record<string, string> {
+  const cleaned: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === "string" && value.trim() !== "") {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
+export const env: Env = envSchema.parse(withoutBlankValues(process.env));
 
 /**
  * Decide which platform adapter to boot. An explicit `PLATFORM` always wins;

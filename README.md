@@ -1,10 +1,12 @@
 # Squawk
 
-A Bun-based Discord bot that:
+A Bun-based bot for **Discord or Slack** that:
 
-- polls one or more public status pages (Statuspage.io, incident.io, and Instatus are supported) and groups each incident into its own Discord thread
+- polls one or more public status pages (Statuspage.io, incident.io, and Instatus are supported) and groups each incident into its own thread
 - answers slash-command status questions with the current page health
 - supports replay and preview flows so you can test notifications without waiting for a live incident
+
+One deployment drives one platform. Set `PLATFORM=discord` or `PLATFORM=slack` — or just fill in one platform's tokens and Squawk infers it. Every feature, command, and lifecycle behavior is the same on both; see [Slack Setup](https://github.com/anthonybaldwin/squawk/wiki/Slack-Setup) for the handful of things Slack has no equivalent for.
 
 Supported providers are auto-detected at `/monitor add` time — drop in any public Statuspage.io URL (e.g. `https://status.atlassian.com`), incident.io URL (e.g. `https://status.openai.com`), or Instatus URL (e.g. `https://status.perplexity.com`) and the bot picks the right adapter.
 
@@ -15,10 +17,13 @@ Supported providers are auto-detected at `/monitor add` time — drop in any pub
 ## Quick Start
 
 ```bash
-cp .env.example .env      # Fill in DISCORD_TOKEN, DISCORD_APPLICATION_ID, etc.
+cp .env.example .env      # Discord: DISCORD_TOKEN + DISCORD_APPLICATION_ID
+                          # Slack:   SLACK_BOT_TOKEN + SLACK_APP_TOKEN
 bun install
 bun dev                    # Watch mode (or `bun start` for production)
 ```
+
+Slack apps are created from a manifest — copy the one in [Slack Setup](https://github.com/anthonybaldwin/squawk/wiki/Slack-Setup).
 
 ## Docker
 
@@ -37,6 +42,7 @@ Full docs live in the [wiki](https://github.com/anthonybaldwin/squawk/wiki):
 | [Architecture](https://github.com/anthonybaldwin/squawk/wiki/Architecture) | System design, data flow, and module structure |
 | [Configuration](https://github.com/anthonybaldwin/squawk/wiki/Configuration) | Environment variables, multi-monitor setup, feature flags |
 | [Commands](https://github.com/anthonybaldwin/squawk/wiki/Commands) | All slash commands with usage and permissions |
+| [Slack Setup](https://github.com/anthonybaldwin/squawk/wiki/Slack-Setup) | Slack app manifest, scopes, tokens, and Discord/Slack differences |
 | [Incident Lifecycle](https://github.com/anthonybaldwin/squawk/wiki/Incident-Lifecycle) | How incidents are tracked from creation to resolution or removal |
 | [State Management](https://github.com/anthonybaldwin/squawk/wiki/State-Management) | Persistence format, migration, and locking |
 | [API Integration](https://github.com/anthonybaldwin/squawk/wiki/API-Integration) | Supported providers, endpoints, and how to add a new provider |
@@ -47,9 +53,10 @@ Full docs live in the [wiki](https://github.com/anthonybaldwin/squawk/wiki):
 ## Notes
 
 - The bot uses public APIs only — Statuspage.io's v2 API (`<base-url>/api/v2/...`), incident.io's widget proxy (`<base-url>/proxy/<host>`), or Instatus's v3 JSON API + Atom history feed (`<base-url>/v3/summary.json`, `<base-url>/history.atom`) — so a public page URL is all you need.
-- For development, setting `DISCORD_GUILD_ID` makes slash-command registration update faster than global commands.
+- For development on Discord, setting `DISCORD_GUILD_ID` makes slash-command registration update faster than global commands.
 - On first startup, the bot seeds current incident-update IDs without posting them unless `POST_EXISTING_UPDATES_ON_START=true`.
-- The bot needs Send Messages, Embed Links, Create Public Threads, and Manage Messages permissions.
+- On Discord the bot needs Send Messages, Embed Links, Create Public Threads, and Manage Messages. On Slack it connects over Socket Mode, so no public endpoint is needed — just the bot and app-level tokens.
+- Slack command names are unique per workspace, so the six commands are subcommands of a single `/squawk` (rename it with `SLACK_COMMAND_NAME`).
 
 ## Previously known as
 
