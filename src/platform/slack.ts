@@ -101,6 +101,22 @@ function truncateForSlack(text: string, limit: number): string {
  * what gives the message its colored accent bar — the closest analogue to a
  * Discord embed's color.
  */
+/**
+ * Slack rejects a whole message with `invalid_blocks` when an image element's
+ * URL is malformed, which would take an incident post down over a bad favicon.
+ * Discord merely omits an icon it cannot render, so match that: drop anything
+ * that is not a plain http(s) URL.
+ */
+function usableImageUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function toSlackAttachment(embed: Embed): MessageAttachment {
   const blocks: KnownBlock[] = [];
 
@@ -108,14 +124,15 @@ export function toSlackAttachment(embed: Embed): MessageAttachment {
     const authorText = embed.author.url
       ? `<${embed.author.url}|${embed.author.name}>`
       : embed.author.name;
+    const iconUrl = usableImageUrl(embed.author.iconUrl);
     blocks.push({
       type: "context",
       elements: [
-        ...(embed.author.iconUrl
+        ...(iconUrl
           ? [
               {
                 type: "image" as const,
-                image_url: embed.author.iconUrl,
+                image_url: iconUrl,
                 alt_text: embed.author.name,
               },
             ]

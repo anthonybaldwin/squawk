@@ -142,6 +142,21 @@ describe("toSlackAttachment", () => {
     );
   });
 
+  test("keeps a usable author icon", () => {
+    const blocks = toSlackAttachment(sampleEmbed).blocks ?? [];
+    const context = blocks[0] as { elements: { type: string }[] };
+    expect(context.elements[0].type).toBe("image");
+  });
+
+  test("drops an author icon Slack would reject rather than failing the post", () => {
+    for (const iconUrl of ["not a url", "data:image/png;base64,AAAA", "//cdn.example.com/i.png"]) {
+      const blocks =
+        toSlackAttachment({ ...sampleEmbed, author: { name: "Example", iconUrl } }).blocks ?? [];
+      const context = blocks[0] as { elements: { type: string }[] };
+      expect(context.elements.map((element) => element.type)).toEqual(["mrkdwn"]);
+    }
+  });
+
   test("groups inline fields into a two-column field section", () => {
     const blocks = toSlackAttachment(sampleEmbed).blocks ?? [];
     const inlineSection = blocks[3] as { fields: { text: string }[] };
