@@ -134,4 +134,6 @@ Options can be positional or `key=value`; quote values containing spaces. Since 
 
 **`not_in_channel` when posting** — Squawk is not in the channel and could not join it (private channels). Run `/invite @Squawk` there.
 
+**`Channel … was not found` for a channel that exists** — Slack reports a private channel the app was never invited to the same way it reports a wrong ID. Run `/invite @Squawk` in that channel.
+
 **`missing_scope`** — a scope was added after install. Reinstall the app so the bot token picks it up.

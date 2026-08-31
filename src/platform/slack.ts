@@ -513,8 +513,10 @@ export class SlackPlatform implements ChatPlatform {
       info = await this.web.conversations.info({ channel: channelId });
     } catch (error) {
       if (isMissingError(error)) {
+        // Slack reports a private channel the app was never invited to as
+        // `channel_not_found`, indistinguishable from a wrong ID, so name both.
         throw new Error(
-          `Channel \`${channelId}\` was not found. Check the channel ID and that Squawk is installed in this workspace.`,
+          `Channel \`${channelId}\` was not found. Check the channel ID — and if it is a private channel, run \`/invite @Squawk\` there first.`,
         );
       }
       throw error;
