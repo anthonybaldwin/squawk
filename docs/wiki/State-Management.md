@@ -2,6 +2,8 @@
 
 The bot persists its state to JSON files in the `data/` directory. In Docker deployments, this directory is backed by a named volume (`squawk_data`).
 
+> **State belongs to one chat platform.** Message, thread, and channel IDs are stored as opaque platform handles — Discord snowflakes on a Discord deployment, Slack `ts` values and channel IDs on a Slack one. Running both platforms means two instances with separate data volumes; pointing a Slack deployment at a Discord state file will not resolve any of the stored IDs.
+
 ## Files
 
 | File | Purpose |
@@ -20,16 +22,17 @@ The bot persists its state to JSON files in the `data/` directory. In Docker dep
       "postedUpdateIds": ["update-id-1", "update-id-2"],
       "openIncidentIds": ["incident-id-1"],
       "lastPostedAt": "2026-03-02T15:50:31.184Z",
-      "lastPinNoticeMessageId": "discord-message-id",
+      "lastPinNoticeMessageId": "<message-id>",
       "incidents": {
         "<incident-id>": {
-          "parentMessageId": "discord-message-id",
-          "threadId": "discord-thread-id",
+          "parentMessageId": "<message-id>",
+          "threadId": "<thread-id>",
           "postedUpdateIds": ["update-id-1"],
           "updateMessageIds": {
-            "update-id-1": "discord-message-id"
+            "update-id-1": "<message-id>"
           },
-          "resolvedAt": "2026-03-02T15:47:09Z"
+          "resolvedAt": "2026-03-02T15:47:09Z",
+          "incidentName": "Elevated error rates"
         }
       }
     }

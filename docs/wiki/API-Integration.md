@@ -137,7 +137,7 @@ Use `iconUrl` to override auto-detection when a page's icon is injected by JavaS
 
 ## Color Mapping
 
-The bot has two separate color maps in `src/index.ts`, and they do **not** agree — the same word means different things in each. Both handle the union of values across all providers (after canonicalization).
+The bot has two separate color maps in `src/render.ts`, and they do **not** agree — the same word means different things in each. Both handle the union of values across all providers (after canonicalization).
 
 ### `statusColor(status)`
 
@@ -179,6 +179,6 @@ Every provider normalizes into the canonical types, so polling, rendering, state
    - `fetchSummary(monitor)` — current page status plus active incidents.
    - `fetchIncidents(monitor)` — full incident list with all updates.
 2. **Register it in `src/providers/index.ts`**: add it to the `PROVIDERS` record and insert it into `PROBE_ORDER`. Order matters — a provider whose probe can false-positive on another provider's pages belongs later, and one that must win over a compatibility shim belongs earlier (this is why incident.io precedes Statuspage).
-3. **Add its ID to the `provider` enum** on `monitorSchema` in `src/index.ts`, so `MONITORS_JSON` and `data/monitors.json` accept it.
+3. **Add its ID to the `provider` enum** on `monitorSchema` in `src/config.ts`, so `MONITORS_JSON` and `data/monitors.json` accept it.
 4. **Add tests** for any parsing logic in `src/providers/<name>.test.ts`, asserting against a captured fixture rather than the live API.
 5. **Update the docs**: this page (endpoints, normalization quirks, probe order), plus `Configuration.md` and `.env.example` where provider IDs are listed.
