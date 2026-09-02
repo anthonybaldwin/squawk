@@ -16,12 +16,14 @@ Thanks for your interest in contributing to squawk!
 
 All bot logic lives in `src/index.ts`. Functions are ordered by dependency (callees above callers). Do not split into separate modules unless the file exceeds ~3000 lines.
 
+Provider adapters are the one exception: each lives in its own small file under `src/providers/` so adding a provider is a drop-in change. See [API Integration](https://github.com/anthonybaldwin/squawk/wiki/API-Integration) for the steps.
+
 ### Error Handling
 
-- Use `isDiscordCleanupError()` for Discord state cleanup (codes 10003, 10008, 50001, 50013, 50035)
-- Only clean up state on confirmed missing Discord resources — never on generic errors
-- Statuspage API calls use `retryWithBackoff` for transient errors (network failures, HTTP 429/500/502/503/504)
+- Clean up state only on confirmed missing Discord resources — check for the specific `DiscordAPIError` codes (10003 Unknown Channel, 10008 Unknown Message, 50001 Missing Access) rather than using a catch-all
+- Status page API calls surface non-2xx responses as errors with the status code and body; the poll loop catches them per monitor and retries on the next cycle
 - Thread archive/unarchive failures are logged but non-fatal
+- Each monitor is isolated inside the poll loop so one failing page can't abort the rest of the cycle
 
 ### Command Pattern
 
@@ -39,6 +41,17 @@ Every slash command handler follows this order:
 - Strict mode is enabled
 - Use Zod schemas for runtime validation of external data (env vars, API responses)
 - Prefer explicit types over `any`
+
+### Checks
+
+Run both before opening a pull request:
+
+```bash
+bun run typecheck    # tsc --noEmit
+bun test             # Unit tests for the provider adapters
+```
+
+Provider parsing logic (feed/HTML/JSON normalization) should come with tests — see `src/providers/instatus.test.ts` for the pattern of asserting against a captured fixture.
 
 ## Documentation Maintenance
 
