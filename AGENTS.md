@@ -18,19 +18,20 @@ The repo was previously named `statuspage-discord`. The legacy `STATUSPAGE_MONIT
 ## Project Structure
 
 ```
-src/index.ts              # All bot logic (~1700 lines, single file)
+src/index.ts              # All bot logic (~2100 lines, single file)
 src/providers/            # Per-provider API adapters (one file per provider)
   types.ts                # Canonical Incident/Summary/PageStatus + Provider interface
   index.ts                # Provider registry + detectProvider()
   statuspage.ts           # Statuspage.io adapter
   incidentio.ts           # incident.io adapter (uses /proxy/<host> widget API)
   instatus.ts             # Instatus adapter (v3 JSON API + Atom history feed)
+  *.test.ts               # Adapter unit tests (`bun test`)
 data/state.json           # Runtime state (git-ignored, auto-created)
 data/monitors.json        # Runtime monitors (git-ignored, auto-created)
 AGENTS.md                 # Agent instructions (cross-tool)
 CLAUDE.md                 # Claude-specific instructions (points here)
 CONTRIBUTING.md           # Symlink → docs/wiki/Contributing.md
-docs/wiki/                # GitHub-style wiki documentation
+docs/wiki/                # Wiki source of truth (published by .github/workflows/sync-wiki.yml)
   Home.md                 # Wiki landing page
   Architecture.md         # System design and data flow
   Configuration.md        # Environment variables and setup
@@ -49,7 +50,8 @@ docs/wiki/                # GitHub-style wiki documentation
 bun install               # Install dependencies
 bun dev                   # Watch mode
 bun start                 # Production run
-bun run tsc --noEmit      # Type-check
+bun run typecheck         # Type-check (tsc --noEmit)
+bun test                  # Run unit tests
 docker compose up -d      # Docker deployment
 ```
 
@@ -57,7 +59,7 @@ docker compose up -d      # Docker deployment
 
 **Every commit that changes behavior, configuration, commands, or architecture MUST include corresponding updates to:**
 
-1. **`docs/wiki/`** — Update the relevant wiki page(s). If a new concept is introduced, add it to the appropriate page or create a new one and link it from `Home.md`.
+1. **`docs/wiki/`** — Update the relevant wiki page(s). If a new concept is introduced, add it to the appropriate page or create a new one and link it from `Home.md`. These files are the source of truth: pushing to `main` publishes them to the GitHub wiki, overwriting anything edited there directly. Mermaid blocks must parse — GitHub replaces an invalid diagram with a red parse error on the live page.
 2. **`README.md`** — Keep Quick Start, Docker, and documentation links in sync.
 3. **`AGENTS.md`** (this file) — Update the project structure, key patterns, or any instructions that change.
 
@@ -89,9 +91,10 @@ All bot logic is in `src/index.ts`. Functions are ordered by dependency (callees
 No changes to polling, rendering, state, or thread lifecycle should be required — every provider normalizes into the canonical types.
 
 ### Error Handling
-- Use `isDiscordCleanupError()` helper for Discord state cleanup (consolidates codes 10003, 10008, 50001, 50013, 50035)
+- Check for the specific `DiscordAPIError` codes before cleaning up state: 10003 (Unknown Channel), 10008 (Unknown Message), 50001 (Missing Access)
 - Never catch-all delete state on generic errors — only on confirmed missing Discord resources
-- Status page API calls use `retryWithBackoff` (3 attempts, exponential: 1s/2s/4s) for transient errors (network failures, HTTP 429/500/502/503/504). Permanent errors fail immediately.
+- Status page adapters throw on non-2xx with the status code and body. There is no retry helper: the poll loop catches per monitor and retries on the next cycle.
+- The poll loop is wrapped in `singleFlight()` so cycles never overlap and duplicate threads
 - Thread archive/unarchive failures are logged but non-fatal
 
 ### State Management
