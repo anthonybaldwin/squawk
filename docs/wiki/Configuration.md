@@ -39,6 +39,12 @@ STATUSPAGE_BASE_URL=https://status.atlassian.com
 
 This creates a single monitor with ID `default`. If `MONITORS_JSON` is set, these two variables are ignored.
 
+If neither approach is configured, the bot exits at startup with `Configure either MONITORS_JSON or both DISCORD_CHANNEL_ID and STATUSPAGE_BASE_URL.`
+
+### Deprecated: `STATUSPAGE_MONITORS_JSON`
+
+The project was formerly named `statuspage-discord`, and its multi-monitor variable was `STATUSPAGE_MONITORS_JSON`. That name is still honored as an alias for `MONITORS_JSON`, but logs a deprecation warning at startup and will be removed in a future release. If both are set, `MONITORS_JSON` wins and no warning is emitted. Rename it when convenient — the value format is identical.
+
 ### Runtime Monitors
 
 Monitors can also be added at runtime via `/monitor add`. These are persisted in `data/monitors.json` and survive restarts. Environment-configured monitors take precedence over runtime monitors with the same ID.
@@ -71,15 +77,16 @@ Boolean values accept: `true`, `1`, `yes`, `on` (truthy) or `false`, `0`, `no`, 
 
 The bot requires these permissions in each monitor channel:
 
-| Permission | Purpose |
-|------------|---------|
-| Send Messages | Post incident embeds |
-| Embed Links | Render rich embeds |
-| Create Public Threads | Create incident threads |
-| Manage Messages | Pin/unpin incident parent messages |
-| Read Message History | Scan threads for deduplication during replay |
+| Permission | Purpose | Checked by `/monitor add` |
+|------------|---------|---------------------------|
+| Send Messages | Post incident embeds | Yes |
+| Embed Links | Render rich embeds | Yes |
+| Create Public Threads | Create incident threads | Yes |
+| Send Messages in Threads | Post incident updates inside those threads | No |
+| Manage Messages | Pin/unpin incident parent messages, prune pin notices | No |
+| Read Message History | Scan threads for deduplication during replay | No |
 
-The `/monitor add` command validates these permissions before adding a new monitor.
+`/monitor add` validates only the first three before accepting a new monitor — it will happily add a monitor that later can't pin or post into threads. Pin and unpin calls are best-effort and their failures are swallowed, so a bot without Manage Messages still posts incidents, just unpinned. Grant all six for full behavior.
 
 Administrative commands (`/testpost`, `/replay`, `/clean`, `/cleanup`, `/monitor`) require the **Manage Server** permission.
 
