@@ -8,8 +8,8 @@ squawk is a Bun/TypeScript application that polls supported public status page A
 
 ```mermaid
 graph LR
-  A["Status page API\n(Statuspage.io, incident.io, or Instatus)"] -->|poll every 60s| P["Provider adapter"]
-  P -->|normalized Incident[]| B["core.ts"]
+  A["Status page API<br/>(Statuspage.io, incident.io, or Instatus)"] -->|poll every 60s| P["Provider adapter"]
+  P -->|"normalized Incident[]"| B["core.ts"]
   B -->|compare update IDs| C["State"]
   B -->|new updates?| D["ChatPlatform"]
   C --- E["data/state.json"]
@@ -17,7 +17,7 @@ graph LR
   D --> DI["platform/discord.ts"]
   D --> SL["platform/slack.ts"]
   DI --- G["Discord API"]
-  SL --- H["Slack API\n(Socket Mode)"]
+  SL --- H["Slack API<br/>(Socket Mode)"]
 ```
 
 1. Every `POLL_INTERVAL_MS` (default 60s), the bot calls `getProvider(monitor).fetchIncidents()` for each monitor. The provider adapter handles its API quirks and returns a normalized `Incident[]`.
@@ -60,14 +60,15 @@ Adapters then map the `Embed` to their native form: a discord.js `EmbedBuilder`,
 
 Discord only — Slack has no bot presence, so the rotation is skipped there via the `presence` capability.
 
-The bot displays a rotating Discord presence that cycles every 15 seconds through four statuses:
+The bot displays a rotating Discord presence that cycles every 15 seconds through three activities:
 
-1. **Watching N status pages** — total monitor count
-2. **Watching N active incidents** — open incidents across all monitors
-3. **Watching Xd Xh** — uptime since bot started
-4. **Playing vX.Y.Z** — version from `APP_VERSION` env var (auto-set in Docker builds) or `package.json`
+1. **Watching N status pages** — total monitor count (`No status pages` when zero)
+2. **Watching N active incidents** — open incidents across all monitors (`No active incidents` when zero)
+3. **Playing vX.Y.Z (Uptime: …)** — version from the `APP_VERSION` env var (auto-set in Docker builds) or `package.json`, plus uptime since the process started
 
-The rotation reads state from disk each tick to get current incident counts, and reads `monitors.length` directly for the monitor count.
+Uptime is formatted at the coarsest useful granularity: `Xd Xh` past a day, `Xh Xm` past an hour, otherwise `Xm`.
+
+The rotation reads state from disk each tick to get current incident counts, and reads `monitors.length` directly for the monitor count. A failed read logs and skips the tick rather than throwing.
 
 ## Key Design Decisions
 

@@ -44,3 +44,7 @@ docker compose up -d
 ```
 
 See [Configuration](Configuration.md) and [Deployment](Deployment.md) for details.
+
+---
+
+These pages are generated from [`docs/wiki/`](https://github.com/anthonybaldwin/squawk/tree/main/docs/wiki) in the main repository and published on every push to `main`. Edit the source files and open a pull request — changes made directly in the wiki UI are overwritten by the next sync.

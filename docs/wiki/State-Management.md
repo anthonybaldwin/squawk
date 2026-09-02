@@ -65,6 +65,8 @@ The bot persists its state to JSON files in the `data/` directory. In Docker dep
       "channelId": "123456789",
       "baseUrl": "https://status.example.com",
       "label": "Example",
+      "provider": "statuspage",
+      "iconUrl": "https://status.example.com/favicon.ico",
       "addedBy": "discord-user-id",
       "addedAt": "2026-03-05T12:00:00Z"
     }
@@ -80,7 +82,12 @@ The bot supports legacy single-monitor state. If `state.json` has a flat structu
 
 ### State File
 
-State reads and writes are not locked because only one poll cycle runs at a time (sequential `for...of` over monitors within `postLatestUpdates`). Command handlers read state independently but only write during `/replay` and `/clean`, which are user-triggered and unlikely to race with polling.
+State reads and writes are not locked. Two things keep that safe:
+
+- **`singleFlight`** wraps the poll loop so a cycle can never overlap with itself. A cycle can outrun `POLL_INTERVAL_MS` (slow or failing monitors, chatty thread creation); without the guard, the overrunning cycle and the next `setInterval` tick would both observe a brand-new incident with no thread mapping and each create a parent message plus thread, producing duplicate threads — only one of which survives the last-writer-wins `writeState`. While a run is in flight, later ticks coalesce into it.
+- **Sequential iteration** — `postLatestUpdates` walks monitors with a `for...of`, so only one monitor is in flight at a time within a cycle.
+
+Command handlers read state independently but only write during `/replay`, `/clean`, and `/cleanup`, which are user-triggered and unlikely to race with polling.
 
 ### Monitors File
 
@@ -89,12 +96,14 @@ Runtime monitor mutations (`/monitor add`, `/monitor remove`) use a promise-chai
 ## State Limits
 
 - `postedUpdateIds` (monitor-level) is trimmed to the last 500 entries per poll cycle
-- `postedUpdateIds` (incident-level) is trimmed to the last 500 entries per replay
+- `postedUpdateIds` (incident-level) is trimmed to the last 500 entries whenever it is appended to — during polling and during `/replay`
 - Incident state entries are only deleted when Discord resources are confirmed missing
 - `/clean` preserves monitor-level `postedUpdateIds` for resolved incidents to prevent re-posting, but strips them for active incidents so they re-create threads
 
 ## File Safety
 
-- Both state files are written atomically (full JSON rewrite, not append)
+- Both files are written as a full JSON rewrite (`writeFile`), never appended to, so a write always lands a complete document
+- Writes are **not** atomic — there is no temp-file-plus-rename, so a crash or power loss mid-write can leave a truncated file. `ensureStateFile()` only re-seeds when `state.json` is *missing*, so a truncated one fails `JSON.parse` on the next read instead of self-healing. If that happens, delete `data/state.json` and let the bot re-seed, then use `/replay` to restore threads.
+- State is written after each monitor finishes rather than once at the end of a cycle, so a mid-cycle crash loses at most one monitor's progress
 - The `data/` directory is created with `mkdir({ recursive: true })` if missing
-- Files use `utf8` encoding with a trailing newline for clean diffs
+- Files use `utf8` encoding with two-space indentation and a trailing newline for clean diffs

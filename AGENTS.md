@@ -36,12 +36,13 @@ src/providers/            # Per-provider API adapters (one file per provider)
   statuspage.ts           # Statuspage.io adapter
   incidentio.ts           # incident.io adapter (uses /proxy/<host> widget API)
   instatus.ts             # Instatus adapter (v3 JSON API + Atom history feed)
+  *.test.ts               # Adapter unit tests (`bun test`)
 data/state.json           # Runtime state (git-ignored, auto-created)
 data/monitors.json        # Runtime monitors (git-ignored, auto-created)
 AGENTS.md                 # Agent instructions (cross-tool)
 CLAUDE.md                 # Claude-specific instructions (points here)
 CONTRIBUTING.md           # Symlink → docs/wiki/Contributing.md
-docs/wiki/                # GitHub-style wiki documentation
+docs/wiki/                # Wiki source of truth (published by .github/workflows/sync-wiki.yml)
   Home.md                 # Wiki landing page
   Architecture.md         # System design and data flow
   Configuration.md        # Environment variables and setup
@@ -61,7 +62,8 @@ docs/wiki/                # GitHub-style wiki documentation
 bun install               # Install dependencies
 bun dev                   # Watch mode
 bun start                 # Production run
-bun run tsc --noEmit      # Type-check
+bun run typecheck         # Type-check (tsc --noEmit)
+bun test                  # Run unit tests
 docker compose up -d      # Docker deployment
 ```
 
@@ -69,7 +71,7 @@ docker compose up -d      # Docker deployment
 
 **Every commit that changes behavior, configuration, commands, or architecture MUST include corresponding updates to:**
 
-1. **`docs/wiki/`** — Update the relevant wiki page(s). If a new concept is introduced, add it to the appropriate page or create a new one and link it from `Home.md`.
+1. **`docs/wiki/`** — Update the relevant wiki page(s). If a new concept is introduced, add it to the appropriate page or create a new one and link it from `Home.md`. These files are the source of truth: pushing to `main` publishes them to the GitHub wiki, overwriting anything edited there directly. Mermaid blocks must parse — GitHub replaces an invalid diagram with a red parse error on the live page.
 2. **`README.md`** — Keep Quick Start, Docker, and documentation links in sync.
 3. **`AGENTS.md`** (this file) — Update the project structure, key patterns, or any instructions that change.
 
@@ -112,7 +114,7 @@ Squawk has two interfaces, and everything else is written once against them:
 
 1. Create `src/providers/<name>.ts` exporting a `Provider` object (see `src/providers/types.ts` for the interface). Implement `probe`, `fetchSummary`, and `fetchIncidents` so they return the canonical `Incident`/`Summary` shapes.
 2. Register it in `src/providers/index.ts`: add to the `PROVIDERS` record, insert into `PROBE_ORDER` (more specific providers first — a provider whose probe might false-positive belongs later in the order).
-3. Add its ID to the `provider` enum on `monitorSchema` in `src/index.ts`.
+3. Add its ID to the `provider` enum on `monitorSchema` in `src/config.ts`.
 4. Update `docs/wiki/API-Integration.md` with the endpoints and any quirks.
 
 No changes to polling, rendering, state, or thread lifecycle should be required — every provider normalizes into the canonical types.
@@ -120,7 +122,8 @@ No changes to polling, rendering, state, or thread lifecycle should be required 
 ### Error Handling
 - Platform adapters translate "resource is gone" errors into `null`/`false` returns (Discord codes 10003, 10008, 50001, 50013, 50035; Slack `channel_not_found`, `message_not_found`, `thread_not_found`). The core prunes state on `null` and never inspects error codes itself.
 - Never catch-all delete state on generic errors — only on confirmed missing platform resources
-- Status page API calls use `retryWithBackoff` (3 attempts, exponential: 1s/2s/4s) for transient errors (network failures, HTTP 429/500/502/503/504). Permanent errors fail immediately.
+- Status page adapters throw on non-2xx with the status code and body. There is no retry helper: the poll loop catches per monitor and retries on the next cycle.
+- The poll loop is wrapped in `singleFlight()` so cycles never overlap and duplicate threads
 - Thread archive/unarchive failures are logged but non-fatal
 
 ### State Management

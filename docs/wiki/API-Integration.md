@@ -107,7 +107,7 @@ Instatus exposes a documented keyless JSON API plus a standard Atom history feed
 - **Maintenance status** maps `NOTSTARTEDYET`/`Scheduled` → `scheduled`, `INPROGRESS`/`VERIFYING`/`Identified` → `in_progress`, `COMPLETED`/`Resolved` → `resolved`. Maintenances carry `impact: "maintenance"` (rendered grey).
 - **Impact** maps `OPERATIONAL` → `none`, `MINOROUTAGE`/`DEGRADEDPERFORMANCE` → `minor`, `PARTIALOUTAGE` → `major`, `MAJOROUTAGE` → `critical`. The Atom feed carries no impact enum, so resolved/historical incidents default to `minor`; incidents still active in `summary.json` are stamped with their real impact by joining on `id`.
 - **Update bodies** come from the Atom `<content>` HTML. Each `<p>` update block (`<small>timestamp</small><br><strong>Status</strong> - body`) is parsed into an `IncidentUpdate`; header `<p>` blocks (`<strong>Type:</strong> …`) are skipped. Update ids are `<incidentId>:<updateTimestampIso>` for dedup. Update blocks are sorted chronologically (the feed does not emit them in order).
-- **Update timestamps** in the feed carry no year. The year is taken from the entry `<published>`, with a rollover guard: if the resulting date lands before `<published>` (beyond a ~24h grace window), it is rolled to the following year (incident spanning Dec→Jan).
+- **Update timestamps** in the feed carry no year. The year is taken from an anchor computed by `entryAnchor()` — the earlier of the entry's `<published>` and `<updated>` — with a rollover guard: if the resulting date lands before the anchor (beyond a ~24h grace window), it is rolled to the following year (incident spanning Dec→Jan). Anchoring on `<published>` alone is wrong for scheduled maintenance, where `<published>` is the scheduled start and the announcement update legitimately precedes it.
 - **`page.id`** is synthesized from the base URL host (Instatus summaries omit it).
 
 ### Probe order
@@ -137,16 +137,48 @@ Use `iconUrl` to override auto-detection when a page's icon is injected by JavaS
 
 ## Color Mapping
 
-The bot maps status indicators to Discord embed colors. The mapping handles the union of statuses across all providers (after canonicalization).
+The bot has two separate color maps in `src/render.ts`, and they do **not** agree — the same word means different things in each. Both handle the union of values across all providers (after canonicalization).
 
-| Status/Impact | Color | Hex |
-|---------------|-------|-----|
-| Operational / Resolved / None | Green | `#2fb344` |
-| Identified | Yellow | `#f2c94c` |
-| Monitoring | Blue | `#6aa9ff` |
-| Investigating / Minor / Degraded | Orange | `#f2994a` |
-| Major / Critical / Major Outage | Red | `#eb5757` |
-| Under Maintenance | Grey | `#8e8e93` |
-| Maintenance | Dark Grey | `#7f8c8d` |
-| Removed (ghost) | Light Grey | `#95a5a6` |
-| Unknown/Default | Discord Blurple | `#5865f2` |
+### `statusColor(status)`
+
+Used for update embeds (colored by the update's own status) and for the `/status` page indicator.
+
+| Status / indicator | Color | Hex |
+|--------------------|-------|-----|
+| `resolved`, `postmortem`, `operational`, `none` | Green | `#2fb344` |
+| `identified` | Yellow | `#f2c94c` |
+| `monitoring` | Blue | `#6aa9ff` |
+| `investigating`, `update`, `minor`, `degraded_performance` | Orange | `#f2994a` |
+| `partial_outage`, `major`, `critical`, `major_outage` | Red | `#eb5757` |
+| `under_maintenance` | Grey | `#8e8e93` |
+| `maintenance` | Dark Grey | `#7f8c8d` |
+| anything else | Discord Blurple | `#5865f2` |
+
+### `impactColor(impact, status?)`
+
+Used for incident parent embeds, which are colored by impact rather than status. A `status` of `resolved` or `postmortem` short-circuits to green regardless of impact.
+
+| Impact | Color | Hex |
+|--------|-------|-----|
+| (status `resolved` / `postmortem`) | Green | `#2fb344` |
+| `none` | Blue | `#6aa9ff` |
+| `minor` | Yellow | `#f2c94c` |
+| `major` | Orange | `#f2994a` |
+| `critical` | Red | `#eb5757` |
+| `maintenance`, `under_maintenance` | Dark Grey | `#7f8c8d` |
+| anything else | Discord Blurple | `#5865f2` |
+
+Ghosted incidents bypass both maps and use `MISSING_INCIDENT_COLOR`, light grey `#95a5a6`.
+
+## Adding a New Provider
+
+Every provider normalizes into the canonical types, so polling, rendering, state, and thread lifecycle need no changes.
+
+1. **Create `src/providers/<name>.ts`** exporting a `Provider` object (see `src/providers/types.ts` for the interface). Implement:
+   - `probe(baseUrl)` — return `{ page, status }` if the URL belongs to this provider, or `null` if it does not. Return `null` rather than throwing when the URL simply isn't yours; `detectProvider()` swallows thrown errors, but a clean `null` is the contract.
+   - `fetchSummary(monitor)` — current page status plus active incidents.
+   - `fetchIncidents(monitor)` — full incident list with all updates.
+2. **Register it in `src/providers/index.ts`**: add it to the `PROVIDERS` record and insert it into `PROBE_ORDER`. Order matters — a provider whose probe can false-positive on another provider's pages belongs later, and one that must win over a compatibility shim belongs earlier (this is why incident.io precedes Statuspage).
+3. **Add its ID to the `provider` enum** on `monitorSchema` in `src/config.ts`, so `MONITORS_JSON` and `data/monitors.json` accept it.
+4. **Add tests** for any parsing logic in `src/providers/<name>.test.ts`, asserting against a captured fixture rather than the live API.
+5. **Update the docs**: this page (endpoints, normalization quirks, probe order), plus `Configuration.md` and `.env.example` where provider IDs are listed.
